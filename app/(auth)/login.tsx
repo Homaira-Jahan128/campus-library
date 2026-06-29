@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -84,27 +84,47 @@ export default function LoginScreen() {
             label="Email"
             placeholder="your@email.com"
             value={email}
-            onChangeText={(t) => { setEmail(t); setErrors((p) => ({ ...p, email: undefined })); }}
+            onChangeText={(t) => {
+              setEmail(t);
+              setErrors((p) => ({ ...p, email: undefined }));
+            }}
             keyboardType="email-address"
             autoCapitalize="none"
             error={errors.email}
           />
+
           <Input
             label="Password"
-            placeholder="password"
+            placeholder="••••••••"
             value={password}
-            onChangeText={(t) => { setPassword(t); setErrors((p) => ({ ...p, password: undefined })); }}
+            onChangeText={(t) => {
+              setPassword(t);
+              setErrors((p) => ({ ...p, password: undefined }));
+            }}
             secureTextEntry
             error={errors.password}
           />
 
-          <Button title="Sign In" onPress={handleLogin} loading={loading} style={{ marginTop: 6 }} />
+          {/* Forgot Password link */}
+          <Pressable
+            style={styles.forgotBtn}
+            onPress={() => router.push("/(auth)/forgot-password")}
+          >
+            <Text style={styles.forgotText}>Forgot Password?</Text>
+          </Pressable>
+
+          <Button
+            title="Sign In"
+            onPress={handleLogin}
+            loading={loading}
+            style={styles.loginBtn}
+          />
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don't have an account?</Text>
-            <TouchableOpacity onPress={() => router.push("/(auth)/signup")}>
+            <Pressable onPress={() => router.push("/(auth)/signup")}>
               <Text style={styles.link}> Sign Up</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </ScrollView>
@@ -135,7 +155,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  appName: { fontSize: 26, fontWeight: "800", color: COLORS.text, marginBottom: 4 },
+  appName: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
   tagline: { fontSize: 14, color: COLORS.textMuted },
   card: {
     borderRadius: 24,
@@ -149,9 +174,34 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 6,
   },
-  cardTitle: { fontSize: 22, fontWeight: "800", color: COLORS.text, marginBottom: 4 },
-  cardSubtitle: { fontSize: 14, color: COLORS.textMuted, marginBottom: 22 },
-  footer: { flexDirection: "row", justifyContent: "center", marginTop: 18 },
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    marginBottom: 22,
+  },
+  forgotBtn: {
+    alignSelf: "flex-end",
+    marginTop: -SPACING.xs,
+    marginBottom: SPACING.md,
+    padding: 4,
+  },
+  forgotText: {
+    fontSize: FONT.size.sm,
+    color: COLORS.primary,
+    fontWeight: "600",
+  },
+  loginBtn: { marginTop: 0 },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 18,
+  },
   footerText: { fontSize: 14, color: COLORS.textMuted },
   link: { fontSize: 14, fontWeight: "700", color: COLORS.primary },
 });

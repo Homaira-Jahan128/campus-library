@@ -155,6 +155,11 @@ export default function AdminUsers() {
                         </Text>
                       </View>
                     </View>
+                    {item.role === "librarian" && item.employeeId && (
+                      <View style={styles.deptTag}>
+                        <Text style={styles.deptTagText}>ID: {item.employeeId}</Text>
+                      </View>
+                    )}
                   </View>
                   {item.role !== "admin" && (
                     <Pressable

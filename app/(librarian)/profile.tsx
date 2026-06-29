@@ -5,6 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { COLORS, FONT, SPACING } from "@/utils/constants";
+import { sendPasswordReset } from "@/services/authService";
+
 
 export default function LibrarianProfile() {
   const { appUser, logout } = useAuth();
@@ -34,6 +36,30 @@ export default function LibrarianProfile() {
     ]);
   };
 
+  const handleChangePassword = () => {
+  Alert.alert(
+    "Change Password",
+    `Send a reset link to ${appUser?.email}?`,
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Send Link",
+        onPress: async () => {
+          try {
+            await sendPasswordReset(appUser?.email ?? "");
+            Alert.alert(
+              "Email Sent ✓",
+              "Check your inbox for the password reset link. Also check spam folder."
+            );
+          } catch (e: any) {
+            Alert.alert("Error", e?.message ?? "Could not send reset email.");
+          }
+        },
+      },
+    ]
+  );
+};
+
   return (
     <View style={styles.container}>
       <ScreenHeader title="Profile" subtitle="Your librarian account" />
@@ -51,6 +77,7 @@ export default function LibrarianProfile() {
 
         <View style={styles.infoCard}>
           <InfoRow icon="mail" label="Email" value={appUser?.email} />
+          <InfoRow icon="card" label="Employee ID" value={appUser?.employeeId} />
           <InfoRow icon="business" label="Library" value={appUser?.libraryName} />
           <InfoRow
             icon="ellipse"
@@ -59,7 +86,11 @@ export default function LibrarianProfile() {
             valueColor={appUser?.status === "active" ? COLORS.accent : COLORS.warning}
           />
         </View>
-
+        <Pressable style={styles.changePassBtn} onPress={handleChangePassword}>
+          <Ionicons name="key-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.changePassText}>Change Password</Text>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        </Pressable>
         <Pressable style={styles.logoutBtn} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color={COLORS.white} />
           <Text style={styles.logoutText}>Sign Out</Text>
@@ -97,4 +128,22 @@ const styles = StyleSheet.create({
   infoValue: { color: COLORS.text, fontWeight: "700" },
   logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.sm, backgroundColor: COLORS.danger, padding: SPACING.md, borderRadius: 14 },
   logoutText: { color: COLORS.white, fontWeight: "700", fontSize: FONT.size.md },
+  changePassBtn: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.sm,
+  backgroundColor: COLORS.card,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  padding: SPACING.md,
+  marginTop: SPACING.md,
+  marginBottom: SPACING.sm,
+},
+changePassText: {
+  flex: 1,
+  fontSize: FONT.size.md,
+  fontWeight: "600",
+  color: COLORS.text,
+},
 });

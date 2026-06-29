@@ -13,6 +13,7 @@ export interface AppUser {
   session?: string;
   libraryId?: string;
   libraryName?: string;
+  employeeId?: string;   
   createdAt: number;
 }
 

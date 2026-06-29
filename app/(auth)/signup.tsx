@@ -35,6 +35,7 @@ export default function SignupScreen() {
   const [selectedDept, setSelectedDept] = useState("");
 
   const [libDropdown, setLibDropdown] = useState(false);
+  const [employeeId, setEmployeeId] = useState("");
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [selectedLibrary, setSelectedLibrary] = useState<Library | null>(null);
 
@@ -99,6 +100,14 @@ export default function SignupScreen() {
       Alert.alert("Error", "Passwords do not match.");
       return;
     }
+    if (role === "librarian" && !selectedLibrary) {
+      Alert.alert("Error", "Please select your library.");
+      return;
+    }
+    if (role === "librarian" && !employeeId.trim()) {
+      Alert.alert("Error", "Please enter your employee/staff ID.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -112,6 +121,7 @@ export default function SignupScreen() {
         session: role === "student" ? session.trim() : undefined,
         libraryId: role === "librarian" ? selectedLibrary?.id : undefined,
         libraryName: role === "librarian" ? selectedLibrary?.name : undefined,
+        employeeId: role === "librarian" ? employeeId.trim() : undefined,
       });
 
       if (role === "librarian") {
@@ -166,6 +176,7 @@ export default function SignupScreen() {
                   setRole(r);
                   setSelectedDept("");
                   setSelectedLibrary(null);
+                  setEmployeeId("");
                 }}
               >
                 <Ionicons
@@ -231,6 +242,7 @@ export default function SignupScreen() {
                   setLibDropdown(true);
                 }}
               >
+
                 <Ionicons name="business" size={14} color={COLORS.textMuted} />
                 <Text
                   style={[styles.dropdownText, !selectedLibrary && { color: COLORS.textMuted }]}
@@ -240,6 +252,13 @@ export default function SignupScreen() {
                 </Text>
                 <Ionicons name="chevron-down" size={14} color={COLORS.textMuted} />
               </Pressable>
+              <Input
+                label="Employee / Staff ID *"
+                placeholder="Your emplayee ID number"
+                value={employeeId}
+                onChangeText={setEmployeeId}
+                keyboardType="default"
+              />
               {selectedLibrary && (
                 <Text style={styles.libHint}>
                   ℹ️ Admin will verify and approve your access.

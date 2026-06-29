@@ -20,6 +20,8 @@ interface SignupData {
   session?: string;
   libraryId?: string;
   libraryName?: string;
+  employeeId?: string;
+
 }
 
 interface AuthContextType {
@@ -88,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...(data.role === "librarian" && {
         libraryId: data.libraryId,
         libraryName: data.libraryName,
+        employeeId: data.employeeId,
       }),
     };
 
