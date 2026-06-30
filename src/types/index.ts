@@ -90,6 +90,26 @@ export interface Loan {
   fine: number;
 }
 
+export type RenewalStatus = "pending" | "approved" | "rejected";
+
+export interface RenewalRequest {
+  id: string;
+  loanId: string;
+  bookId: string;
+  bookTitle: string;
+  userId: string;
+  userName: string;
+  userRoll?: string;
+  userDepartment?: string;
+  libraryId: string;
+  libraryName: string;
+  currentDueDate: number;
+  requestedDays: number;
+  status: RenewalStatus;
+  requestedAt: number;
+  reviewedAt?: number;
+}
+
 export type NotificationType =
   | "request_submitted"
   | "request_approved"

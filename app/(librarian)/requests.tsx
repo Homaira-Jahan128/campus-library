@@ -27,6 +27,12 @@ import { adjustAvailableCopies, getBookById } from "@/services/bookService";
 import { createLoan } from "@/services/loanService";
 import { createNotification } from "@/services/notificationService";
 import { formatDate } from "@/utils/fines";
+import {
+  getRenewalsByLibrary,
+  approveRenewal,
+  rejectRenewal,
+} from "@/services/renewalService";
+import { RenewalRequest } from "@/types";
 
 type FilterType = RequestStatus | "all";
 
@@ -90,12 +96,85 @@ export default function LibrarianRequests() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"requests" | "renewals">("requests");
+  const [renewals, setRenewals] = useState<RenewalRequest[]>([]);
+  const [renewalProcessingId, setRenewalProcessingId] = useState<string | null>(null);
 
   const load = async () => {
     if (!appUser?.libraryId) return;
     await expireUncollectedRequests();
-    const data = await getRequestsByLibrary(appUser.libraryId);
-    setRequests(data);
+    const [reqData, renewalData] = await Promise.all([
+      getRequestsByLibrary(appUser.libraryId),
+      getRenewalsByLibrary(appUser.libraryId),
+    ]);
+    setRequests(reqData);
+    setRenewals(renewalData);
+  };
+
+  const handleApproveRenewal = async (renewal: RenewalRequest) => {
+    Alert.alert(
+      "Approve Renewal",
+      `Extend "${renewal.bookTitle}" by ${renewal.requestedDays} days?\n\nRoll: ${renewal.userRoll ?? "N/A"}\nDept: ${renewal.userDepartment ?? "N/A"}`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Approve ✓",
+          onPress: async () => {
+            setRenewalProcessingId(renewal.id);
+            try {
+              const newDueDate = await approveRenewal(
+                renewal.id,
+                renewal.loanId,
+                renewal.currentDueDate,
+                renewal.requestedDays
+              );
+              await createNotification(
+                renewal.userId,
+                "Renewal Approved ✓",
+                `Your renewal for "${renewal.bookTitle}" has been approved. New due date: ${formatDate(newDueDate)}.`,
+                "request_approved"
+              );
+              await load();
+            } catch (e: any) {
+              Alert.alert("Error", e?.message ?? "Could not approve renewal.");
+            } finally {
+              setRenewalProcessingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRejectRenewal = async (renewal: RenewalRequest) => {
+    Alert.alert(
+      "Reject Renewal",
+      `Reject renewal for "${renewal.bookTitle}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reject",
+          style: "destructive",
+          onPress: async () => {
+            setRenewalProcessingId(renewal.id);
+            try {
+              await rejectRenewal(renewal.id);
+              await createNotification(
+                renewal.userId,
+                "Renewal Rejected",
+                `Your renewal request for "${renewal.bookTitle}" was not approved. Please return the book by ${formatDate(renewal.currentDueDate)}.`,
+                "request_rejected"
+              );
+              await load();
+            } catch (e: any) {
+              Alert.alert("Error", e?.message ?? "Could not reject renewal.");
+            } finally {
+              setRenewalProcessingId(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -121,10 +200,24 @@ export default function LibrarianRequests() {
     return result;
   }, [requests, filter, searchText]);
 
+  // NEW: search filter for renewals tab
+  const filteredRenewals = useMemo(() => {
+    if (!searchText.trim()) return renewals;
+    const q = searchText.trim().toLowerCase();
+    return renewals.filter((r) => {
+      const roll = (r.userRoll ?? "").toLowerCase();
+      const dept = (r.userDepartment ?? "").toLowerCase();
+      const book = r.bookTitle.toLowerCase();
+      const uid = r.userId.toLowerCase();
+      return roll.includes(q) || dept.includes(q) || book.includes(q) || uid.includes(q);
+    });
+  }, [renewals, searchText]);
+
   const pendingCount = requests.filter((r) => r.status === "pending").length;
   const toCollectCount = requests.filter(
     (r) => r.status === "approved_pending_collection"
   ).length;
+  const pendingRenewalsCount = renewals.filter((r) => r.status === "pending").length;
 
   const handleApprove = async (req: LoanRequest) => {
     setProcessingId(req.id);
@@ -238,12 +331,36 @@ export default function LibrarianRequests() {
         }
       />
 
+      {/* Tab switcher */}
+      <View style={styles.tabRow}>
+        <Pressable
+          style={[styles.tabBtn, activeTab === "requests" && styles.tabBtnActive]}
+          onPress={() => setActiveTab("requests")}
+        >
+          <Text style={[styles.tabBtnText, activeTab === "requests" && styles.tabBtnTextActive]}>
+            Requests {pendingCount > 0 ? `(${pendingCount})` : ""}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabBtn, activeTab === "renewals" && styles.tabBtnActive]}
+          onPress={() => setActiveTab("renewals")}
+        >
+          <Text style={[styles.tabBtnText, activeTab === "renewals" && styles.tabBtnTextActive]}>
+            Renewals {pendingRenewalsCount > 0 ? `(${pendingRenewalsCount})` : ""}
+          </Text>
+        </Pressable>
+      </View>
+
       <View style={styles.searchWrap}>
         <View style={styles.searchBox}>
           <Ionicons name="search" size={16} color={COLORS.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by roll no. or book title..."
+            placeholder={
+              activeTab === "requests"
+                ? "Search by roll no. or book title..."
+                : "Search renewals by roll no. or book title..."
+            }
             placeholderTextColor={COLORS.textMuted}
             value={searchText}
             onChangeText={setSearchText}
@@ -258,32 +375,36 @@ export default function LibrarianRequests() {
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterList}
-        contentContainerStyle={styles.filterRow}
-        keyboardShouldPersistTaps="handled"
-      >
-        {FILTERS.map((f) => (
-          <Pressable
-            key={f.value}
-            onPress={() => setFilter(f.value)}
-            style={[styles.chip, filter === f.value && styles.chipActive]}
-          >
-            <Text
-              style={[styles.chipText, filter === f.value && styles.chipTextActive]}
-              numberOfLines={1}
+      {/* Status filter chips only make sense for Requests tab */}
+      {activeTab === "requests" && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterList}
+          contentContainerStyle={styles.filterRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {FILTERS.map((f) => (
+            <Pressable
+              key={f.value}
+              onPress={() => setFilter(f.value)}
+              style={[styles.chip, filter === f.value && styles.chipActive]}
             >
-              {f.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+              <Text
+                style={[styles.chipText, filter === f.value && styles.chipTextActive]}
+                numberOfLines={1}
+              >
+                {f.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
 
       {searchText.length > 0 && (
         <Text style={styles.resultCount}>
-          {filtered.length} result{filtered.length !== 1 ? "s" : ""} for "{searchText}"
+          {activeTab === "requests" ? filtered.length : filteredRenewals.length} result
+          {(activeTab === "requests" ? filtered.length : filteredRenewals.length) !== 1 ? "s" : ""} for "{searchText}"
         </Text>
       )}
 
@@ -291,6 +412,90 @@ export default function LibrarianRequests() {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
+      ) : activeTab === "renewals" ? (
+        <FlatList
+          data={filteredRenewals}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={async () => {
+                setRefreshing(true);
+                await load();
+                setRefreshing(false);
+              }}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="refresh-circle-outline" size={48} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>
+                {searchText ? "No matching renewal requests." : "No renewal requests."}
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <View style={[
+              styles.card,
+              item.status === "pending" && styles.cardHighlight,
+            ]}>
+              <View style={styles.cardTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bookTitle}>{item.bookTitle}</Text>
+                  <Text style={styles.muted}>
+                    +{item.requestedDays} days extension
+                  </Text>
+                  <Text style={styles.muted}>
+                    Current due: {formatDate(item.currentDueDate)}
+                  </Text>
+                </View>
+                {item.status === "pending" ? (
+                  <Badge status="pending" label="PENDING" />
+                ) : item.status === "approved" ? (
+                  <Badge status="active" label="APPROVED" />
+                ) : (
+                  <Badge status="rejected" label="REJECTED" />
+                )}
+              </View>
+
+              {/* moved outside cardTop, now full width like requests tab */}
+              <View style={styles.studentCard}>
+                <View style={styles.studentRow}>
+                  <Ionicons name="card-outline" size={13} color={COLORS.primary} />
+                  <Text style={styles.studentRoll}>
+                    {item.userRoll ?? item.userId.slice(0, 8).toUpperCase()}
+                  </Text>
+                </View>
+                {item.userDepartment && (
+                  <View style={styles.studentRow}>
+                    <Ionicons name="business-outline" size={13} color={COLORS.textMuted} />
+                    <Text style={styles.studentDept}>{item.userDepartment}</Text>
+                  </View>
+                )}
+              </View>
+
+              {item.status === "pending" && (
+                <View style={styles.actionsRow}>
+                  <Button
+                    title="Approve"
+                    onPress={() => handleApproveRenewal(item)}
+                    variant="secondary"
+                    loading={renewalProcessingId === item.id}
+                    style={styles.actionBtn}
+                  />
+                  <Button
+                    title="Reject"
+                    onPress={() => handleRejectRenewal(item)}
+                    variant="danger"
+                    loading={renewalProcessingId === item.id}
+                    style={styles.actionBtn}
+                  />
+                </View>
+              )}
+            </View>
+          )}
+        />
       ) : (
         <FlatList
           data={filtered}
@@ -326,9 +531,6 @@ export default function LibrarianRequests() {
                     {item.loanDurationDays} days · {formatDate(item.requestedAt)}
                   </Text>
 
-                  {/* Student info — roll + department */}
-
-
                   {item.status === "approved_pending_collection" && item.collectionDeadline && (
                     <View style={styles.deadlinePill}>
                       <Ionicons name="time-outline" size={12} color={COLORS.warning} />
@@ -337,7 +539,6 @@ export default function LibrarianRequests() {
                       </Text>
                     </View>
                   )}
-
                 </View>
                 {getStatusBadge(item.status)}
               </View>
@@ -399,35 +600,34 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.text, padding: 0 },
   filterList: {
-  flexGrow: 0,
-  flexShrink: 0,
-},
-filterRow: {
-  flexDirection: "row",
-  paddingHorizontal: SPACING.lg,
-  paddingBottom: SPACING.sm,
-  gap: SPACING.sm,
-  alignItems: "center",
-},
-chip: {
-  paddingHorizontal: 14,
-  paddingVertical: 8,
-  borderRadius: 999,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  backgroundColor: COLORS.card,
-  minWidth: 60,
-  alignItems: "center",
-  justifyContent: "center",
-},
-chipText: {
-  color: COLORS.text,
-  fontSize: FONT.size.sm,
-  fontWeight: "600",
-  textAlign: "center",
-},
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  filterRow: {
+    flexDirection: "row",
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
+    gap: SPACING.sm,
+    alignItems: "center",
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    minWidth: 60,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chipText: {
+    color: COLORS.text,
+    fontSize: FONT.size.sm,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  
   chipTextActive: { color: COLORS.white },
   resultCount: {
     fontSize: 12,
@@ -456,8 +656,6 @@ chipText: {
   },
   bookTitle: { fontSize: FONT.size.md, fontWeight: "700", color: COLORS.text },
   muted: { color: COLORS.textMuted, fontSize: FONT.size.sm, marginTop: 2 },
-
-  // Student info card
   studentCard: {
     backgroundColor: COLORS.primaryLight,
     borderRadius: 8,
@@ -482,7 +680,6 @@ chipText: {
     fontWeight: "600",
     flex: 1,
   },
-
   deadlinePill: {
     flexDirection: "row",
     alignItems: "center",
@@ -499,4 +696,31 @@ chipText: {
   actionsRow: { flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.md },
   actionBtn: { flex: 1 },
   collectBtn: { marginTop: SPACING.md },
+  tabRow: {
+    flexDirection: "row",
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    alignItems: "center",
+  },
+  tabBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  tabBtnText: {
+    fontSize: FONT.size.sm,
+    fontWeight: "700",
+    color: COLORS.textMuted,
+  },
+  tabBtnTextActive: {
+    color: COLORS.white,
+  },
 });
